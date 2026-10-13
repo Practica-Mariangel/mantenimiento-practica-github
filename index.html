@@ -242,6 +242,99 @@ const APP_MARKUP = "\n\n<!-- ===== PANTALLA DE ACCESO ===== -->\n<div id=\"login
   var m = document.getElementById('appMount');
   if (m) m.innerHTML = APP_MARKUP;
 })();
+// ===============================================================
+// AGRUPACIÓN Y CONSOLIDACIÓN DE CLIENTES CON "CCI"
+// ===============================================================
+// Detecta cualquier nombre que contenga la palabra clave "CCI"
+// (insensible a mayúsculas, espacios extra y presencia/ausencia de "TORRE")
+// y consolida todo en una sola fila principal llamada "CCI"
+// manteniendo los nombres detallados como sublista "variantes"
+// ===============================================================
+
+function normalizeClienteNameForCCI(value) {
+  if (value === null || value === undefined) {
+    return { isCCI: false, normalized: "" };
+  }
+
+  const text = String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const normalized = text.replace(/\bTORRE\b/g, "").replace(/\s+/g, " ").trim();
+
+  const isCCI = /\bCCI\b/.test(normalized);
+
+  return {
+    isCCI,
+    normalized
+  };
+}
+
+function agruparClientesCCI(clientes) {
+  const grupos = new Map();
+
+  function ensureGroup(key, nombrePrincipal) {
+    if (!grupos.has(key)) {
+      grupos.set(key, {
+        nombre: nombrePrincipal,
+        totalVisitas: 0,
+        totalInformes: 0,
+        variantes: []
+      });
+    }
+    return grupos.get(key);
+  }
+
+  for (const item of clientes || []) {
+    const nombreOriginal = item?.nombre ?? item?.cliente ?? item?.name ?? "";
+    const visitas = Number(item?.visitas ?? item?.totalVisitas ?? item?.visits ?? 0);
+    const informes = Number(
+      item?.informes ??
+      item?.totalInformes ??
+      item?.reportes ??
+      item?.reports ??
+      0
+    );
+
+    const { isCCI } = normalizeClienteNameForCCI(nombreOriginal);
+    const nombreFinal = isCCI ? "CCI" : String(nombreOriginal || "").trim();
+
+    const grupo = ensureGroup(nombreFinal, nombreFinal);
+
+    grupo.totalVisitas += visitas;
+    grupo.totalInformes += informes;
+
+    const variantName = String(nombreOriginal || "").trim();
+
+    const varianteExistente = grupo.variantes.find(v => v.nombre === variantName);
+
+    if (varianteExistente) {
+      varianteExistente.visitas += visitas;
+      varianteExistente.informes += informes;
+    } else {
+      grupo.variantes.push({
+        nombre: variantName,
+        visitas,
+        informes
+      });
+    }
+  }
+
+  return Array.from(grupos.values()).sort((a, b) => {
+    if (a.nombre === "CCI" && b.nombre !== "CCI") return -1;
+    if (a.nombre !== "CCI" && b.nombre === "CCI") return 1;
+    if (b.totalInformes !== a.totalInformes) return b.totalInformes - a.totalInformes;
+    return a.nombre.localeCompare(b.nombre, "es");
+  });
+}
+
+function renderDetallePorCliente(clientes) {
+  return agruparClientesCCI(clientes);
+}
+
 
 // ============== LOGOS (base64) ==============
 const LOGOS = {
